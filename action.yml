@@ -1,0 +1,33 @@
+name: Issue2PR
+description: 读取 issue，自动定位并修复代码，测试通过后开 PR
+author: wudi091
+
+inputs:
+  api_key:
+    description: 模型 API key
+    required: true
+  model:
+    description: 模型名
+    default: deepseek-chat
+  base_url:
+    description: 模型 API 地址，兼容 OpenAI 格式即可换供应商
+    default: https://api.deepseek.com
+  max_steps:
+    description: 最大工具调用步数，同时也是成本上限
+    default: "20"
+  locator:
+    description: 代码定位策略，目前只实现 keyword
+    default: keyword
+  github_token:
+    description: 用于开 PR 与评论，传 ${{ secrets.GITHUB_TOKEN }}
+    required: true
+
+outputs:
+  status:
+    description: 任务终态：resolved / failed
+  pr_url:
+    description: 成功时开出的 PR 链接
+
+runs:
+  using: docker
+  image: Dockerfile
