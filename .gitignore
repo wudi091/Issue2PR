@@ -5,6 +5,9 @@ __pycache__/
 .venv/
 venv/
 
+# 测试用临时目录（见 tests/conftest.py）
+tests/.tmp/
+
 # 编辑器 / 系统
 .DS_Store
 Thumbs.db
