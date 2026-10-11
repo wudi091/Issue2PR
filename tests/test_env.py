@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,52 @@ def test_unwrap_raises_only_when_there_is_an_error() -> None:
 
     with pytest.raises(EnvError, match="炸了"):
         err("炸了").unwrap()
+
+
+def test_exec_runs_a_command_and_captures_stdout(tmp_path: Path) -> None:
+    result = LocalEnv(tmp_path).exec([sys.executable, "-c", "print('hi')"])
+
+    assert result.ok is True
+    assert result.value.stdout.strip() == "hi"
+    assert result.value.returncode == 0
+
+
+def test_non_zero_exit_is_a_result_not_an_error(tmp_path: Path) -> None:
+    """grep 没匹配就退 1——那是正常结果，不是失败。"""
+    result = LocalEnv(tmp_path).exec([sys.executable, "-c", "import sys; sys.exit(3)"])
+
+    assert result.ok is True
+    assert result.value.returncode == 3
+
+
+def test_a_string_command_runs_through_the_shell(tmp_path: Path) -> None:
+    """走 shell 才有管道和重定向；这里用 echo 保证跨平台。"""
+    result = LocalEnv(tmp_path).exec("echo hello")
+
+    assert result.ok is True
+    assert "hello" in result.value.stdout
+
+
+def test_a_missing_command_is_an_error_result(tmp_path: Path) -> None:
+    result = LocalEnv(tmp_path).exec(["definitely-not-a-real-binary-xyz"])
+
+    assert result.ok is False
+    assert "命令不存在" in result.error
+
+
+def test_a_hanging_command_times_out_instead_of_blocking_forever(tmp_path: Path) -> None:
+    result = LocalEnv(tmp_path).exec(
+        [sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.5
+    )
+
+    assert result.ok is False
+    assert "超时" in result.error
+
+
+def test_exec_defaults_to_the_workspace_and_rejects_an_outside_cwd(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+
+    inside = env.exec([sys.executable, "-c", "import os; print(os.getcwd())"])
+    assert Path(inside.value.stdout.strip()) == tmp_path
+
+    assert env.exec([sys.executable, "-c", "print(1)"], cwd="..").ok is False
