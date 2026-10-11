@@ -72,6 +72,11 @@ class LocalEnv:
 
         **退出码非 0 不是错误**——那是命令的正常结果（grep 没匹配就退 1），
         调用方看 `.returncode`。只有命令不存在、超时、起不来才算 Result.error。
+
+        已知问题：超时只杀**直接子进程**。走 shell 时命令是 shell 的子进程，
+        而 Windows 的 cmd 不会 exec 掉自己，所以孙进程会活下来——
+        tests/test_bash_tool.py 里那个超时用例要等满 sleep 才返回就是这个原因。
+        Linux 上 sh 对单条命令会 exec，通常没这个问题，但管道和 && 不保证。
         """
         workdir = self.absolute_path(cwd) if cwd else ok(self.cwd)
         if not workdir.ok:
