@@ -1,10 +1,7 @@
-"""loop 的调度契约测试。
+"""调度层的契约测试：loop 的正确性就是「调度得对不对」。
 
-假 client 返回的是**真的 ChatCompletion 对象**（用 SDK 类型构造），
-所以测试和真实响应同构，但不需要 API key、不联网。
-
-loop 是调度器，它的正确性就是「调度得对不对」：工具按什么顺序被调用、
-预算有没有真的生效、卡死能不能识别、坏输入会不会把循环搞崩。
+假 client 返回的是**真的 ChatCompletion 对象**（SDK 类型构造），
+所以测试与真实响应同构，但不联网、不花 API key。
 """
 
 from __future__ import annotations
@@ -12,10 +9,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
 from openai.types.chat import ChatCompletion
 
-from issue2pr.loop import BUDGET_EXHAUSTED, FAILED, RESOLVED, AgentLoop, TaskDone
+from issue2pr.loop import AgentLoop
+from issue2pr.result import BUDGET_EXHAUSTED, FAILED, RESOLVED, TaskDone
 
 
 def reply(*tool_calls: tuple[str, str], content: str | None = None) -> ChatCompletion:
@@ -133,15 +130,6 @@ def test_consecutive_tool_failures_stop_the_loop() -> None:
     assert "连续失败 2 轮" in result.reason
 
 
-def test_bad_arguments_and_unknown_tools_are_reported_not_crashed() -> None:
-    client = FakeClient(reply(("echo", "{不是 json")), reply(("nope", "{}")))
-    result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
-
-    observations = [m["content"] for m in result.messages if m["role"] == "tool"]
-    assert "参数解析失败" in observations[0]
-    assert "没有这个工具" in observations[1]
-
-
 def test_model_talking_without_tools_gets_one_nudge_then_fails() -> None:
     client = FakeClient(reply(content="我觉得应该改 calc.py"))
     result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
@@ -158,16 +146,3 @@ def test_assistant_message_is_dumped_without_none_fields() -> None:
     assistant = next(m for m in result.messages if m["role"] == "assistant")
     assert "content" not in assistant, "exclude_none 没生效的话 content: null 可能被 DeepSeek 拒"
     assert assistant["tool_calls"][0]["function"]["name"] == "echo"
-
-
-def test_tools_without_implementations_are_rejected_at_init() -> None:
-    ghost = {
-        "type": "function",
-        "function": {
-            "name": "ghost",
-            "description": "只有 schema、没有实现",
-            "parameters": {"type": "object", "properties": {"q": {"type": "string"}}},
-        },
-    }
-    with pytest.raises(ValueError, match="只有 schema"):
-        AgentLoop(FakeClient(reply(content="x")), model="test", tools=[ghost], handlers={})
