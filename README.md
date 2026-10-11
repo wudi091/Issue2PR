@@ -52,7 +52,7 @@ jobs:
 | `github_token` | 是 | — | 传 `${{ secrets.GITHUB_TOKEN }}` |
 | `model` | 否 | `deepseek-chat` | 模型名 |
 | `base_url` | 否 | `https://api.deepseek.com` | 兼容 OpenAI 格式即可换供应商 |
-| `max_steps` | 否 | `20` | 最大工具调用步数，同时也是成本上限 |
+| `max_steps` | 否 | `20` | 最多几次模型调用，同时也是成本上限 |
 | `locator` | 否 | `keyword` | 代码定位策略 |
 
 ## 输出

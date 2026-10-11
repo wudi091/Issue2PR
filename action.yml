@@ -13,7 +13,7 @@ inputs:
     description: 模型 API 地址，兼容 OpenAI 格式即可换供应商
     default: https://api.deepseek.com
   max_steps:
-    description: 最大工具调用步数，同时也是成本上限
+    description: 最多几次模型调用，同时也是成本上限
     default: "20"
   locator:
     description: 代码定位策略，目前只实现 keyword
