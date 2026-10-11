@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from issue2pr.env import EnvError, err, ok
-from issue2pr.local_env import LocalEnv
+from issue2pr.env.local import LocalEnv
 
 SOURCE = "def add(a, b):\n    return a + b\n"
 

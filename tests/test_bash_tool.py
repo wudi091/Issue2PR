@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from issue2pr.local_env import LocalEnv
+from issue2pr.env.local import LocalEnv
 from issue2pr.tools import check_bindings, execute
 from issue2pr.tools.bash import BASH_SCHEMA, DEFAULT_TIMEOUT, MAX_LINES, make_bash_handler
 

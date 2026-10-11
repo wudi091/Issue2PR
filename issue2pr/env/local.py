@@ -1,4 +1,4 @@
-"""环境层的本地实现：真实磁盘。
+"""环境层的本地实现：真实磁盘 + 真实子进程。
 
 路径安全在这里兜住——absolute_path 拒绝逃出 cwd 的路径。
 pi 不做这件事（它靠容器隔离），但我们的路径是模型给的、不可控，多一层检查值得。
@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .env import Result, err, ok
+from . import Result, err, ok
 
 
 class LocalEnv:

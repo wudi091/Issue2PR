@@ -3,7 +3,11 @@
 规矩（学 pi）：方法失败**不抛异常**，把失败编码进返回值。
 这样工具层不用写 try/except——失败是数据，不是控制流。
 
-这个文件不碰磁盘，只定义契约；真实实现在 local_env.py。
+    __init__.py  本文件：契约（Result / EnvError / Env 协议），不碰磁盘
+    local.py     本地实现：真实磁盘 + 真实子进程
+
+本文件谁都不依赖；实现依赖本文件。所以这里不能 import 任何实现，
+否则分层就倒了。
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ def err(message: str) -> Result:
 
 
 class Env(Protocol):
-    """环境接口。以后加 DockerEnv 时保持同一套方法签名，工具层不用改。"""
+    """环境接口。换实现（本地 / 容器 / 远程）时保持同一套方法签名，工具层不用改。"""
 
     cwd: Path
 
