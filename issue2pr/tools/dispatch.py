@@ -1,6 +1,7 @@
-"""能力层：工具的定义（schema）与执行。
+"""工具层的机制：schema 与实现的绑定校验、执行一次工具调用。
 
-只负责「模型能调什么」和「怎么把它调起来」，不关心循环跑了几步、什么时候停。
+只负责「怎么把工具调起来」，不管具体有哪些工具（那些在隔壁每个文件里），
+也不管循环跑了几步、什么时候停（那是 loop 的事）。
 
 工具实现就是普通函数：收关键字参数、返回字符串（观察结果）。
 要喊停就抛 TaskDone——那是唯一能让循环提前收工的信号。
@@ -14,7 +15,7 @@ from typing import Any, Callable
 
 from openai.types.chat import ChatCompletionToolParam
 
-from .result import TaskDone
+from ..result import TaskDone
 
 log = logging.getLogger("issue2pr")
 

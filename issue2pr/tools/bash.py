@@ -20,7 +20,7 @@ from typing import Callable
 
 from openai.types.chat import ChatCompletionToolParam
 
-from .env import Env
+from ..env import Env
 
 MAX_LINES = 2000
 MAX_BYTES = 50 * 1024
@@ -84,7 +84,8 @@ def make_bash_handler(env: Env) -> Callable[..., str]:
         completed = result.value
         text = (completed.stdout or "").rstrip()
         if completed.stderr and completed.stderr.strip():
-            text = f"{text}\n[stderr]\n{completed.stderr.rstrip()}" if text else f"[stderr]\n{completed.stderr.rstrip()}"
+            stderr = completed.stderr.rstrip()
+            text = f"{text}\n[stderr]\n{stderr}" if text else f"[stderr]\n{stderr}"
 
         text, truncated = _truncate_tail(text)
         if truncated:
