@@ -5,7 +5,7 @@
 
 几条设计决定来自参考实现：
   - 预算按模型调用次数算，超了就停，不产生任何费用（mini-swe-agent）
-  - 结束与否由工具决定，不解析模型的话术（pi）
+  - 模型不再调用工具，就是它宣布干完了（dsh / codex）；工具抛 TaskDone 也能提前收工
   - 消息只追加、不重写：轨迹可复盘，prompt cache 能命中（codex 的硬规矩）
 """
 
@@ -18,8 +18,21 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 
 from .model import DEFAULT_MODEL, complete
 from .prompt import SYSTEM_PROMPT
-from .result import BUDGET_EXHAUSTED, FAILED, RunResult, TaskDone
+from .result import BUDGET_EXHAUSTED, FAILED, RESOLVED, RunResult, TaskDone
 from .tools import check_bindings, execute
+
+
+def _budget_note(used: int, total: int) -> str:
+    """把剩余预算写进观察结果。
+
+    模型不知道自己在花什么，就会一直验证到预算耗尽——真跑里就是这么烧完 20 次的。
+    mini-swe-agent 把同样的提醒放在观察结果模板里（`benchmarks/programbench.yaml`），
+    只在剩余 < 20 时出现；我们预算小，每轮都给，并且说清用完的后果。
+    """
+    return (
+        f"[预算] 已用 {used}/{total} 次模型调用，还剩 {total - used} 次；"
+        "用完即停，届时仓库里的状态就是最终结果。"
+    )
 
 
 class AgentLoop:
@@ -58,19 +71,24 @@ class AgentLoop:
         nudged = False
 
         # max_steps 是「最多几次模型调用」——每次调用都花钱，所以按调用次数算
-        for _ in range(self.max_steps):
+        for step in range(1, self.max_steps + 1):
             completion = complete(self.client, model=self.model, messages=messages, tools=self.tools)
             message = completion.choices[0].message
             # 返回的是 pydantic 对象，必须转成 dict 才能回填；exclude_none 避免 content: null
             messages.append(message.model_dump(exclude_none=True))
 
             if not message.tool_calls:
-                # 模型只说话不动手。给一次纠正机会，再犯就当失败收工
-                if nudged:
-                    return RunResult(FAILED, "模型连续两轮不调用工具", messages)
-                nudged = True
-                messages.append({"role": "user", "content": "请用工具继续定位或修改，不要只描述。"})
-                continue
+                # 抄 dsh / codex：模型不再调用工具，就是它宣布这一轮干完了。
+                # 唯一例外是被 max_tokens 截断——那不是它自己停的，推一把让它接着说。
+                if completion.choices[0].finish_reason == "length" and not nudged:
+                    nudged = True
+                    messages.append(
+                        {"role": "user", "content": "上一条回复被长度限制截断了，请接着说完。"}
+                    )
+                    continue
+                return RunResult(
+                    RESOLVED, (message.content or "").strip() or "模型不再调用工具", messages
+                )
             nudged = False
 
             signature = tuple(f"{c.function.name}({c.function.arguments})" for c in message.tool_calls)
@@ -80,7 +98,8 @@ class AgentLoop:
                 return RunResult(FAILED, "连续重复同一批工具调用，判定卡死", messages)
 
             errors = 0
-            for tool_call in message.tool_calls:
+            last = len(message.tool_calls) - 1
+            for index, tool_call in enumerate(message.tool_calls):
                 try:
                     output, failed = execute(
                         self.handlers, tool_call.function.name, tool_call.function.arguments
@@ -88,6 +107,9 @@ class AgentLoop:
                 except TaskDone as done:
                     return RunResult(done.status, done.reason, messages)
                 errors += 1 if failed else 0
+                if index == last:
+                    # 预算挂在观察结果尾巴上，一轮只挂一次
+                    output = f"{output}\n\n{_budget_note(step, self.max_steps)}"
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": output})
 
             consecutive_errors = consecutive_errors + 1 if errors else 0

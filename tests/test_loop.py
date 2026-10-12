@@ -15,7 +15,9 @@ from issue2pr.loop import AgentLoop
 from issue2pr.result import BUDGET_EXHAUSTED, FAILED, RESOLVED, TaskDone
 
 
-def reply(*tool_calls: tuple[str, str], content: str | None = None) -> ChatCompletion:
+def reply(
+    *tool_calls: tuple[str, str], content: str | None = None, finish_reason: str | None = None
+) -> ChatCompletion:
     """造一个真的 ChatCompletion 响应。"""
     message: dict[str, Any] = {"role": "assistant", "content": content}
     if tool_calls:
@@ -30,7 +32,11 @@ def reply(*tool_calls: tuple[str, str], content: str | None = None) -> ChatCompl
             "created": 0,
             "model": "test",
             "choices": [
-                {"index": 0, "finish_reason": "tool_calls" if tool_calls else "stop", "message": message}
+                {
+                    "index": 0,
+                    "finish_reason": finish_reason or ("tool_calls" if tool_calls else "stop"),
+                    "message": message,
+                }
             ],
         }
     )
@@ -130,13 +136,45 @@ def test_consecutive_tool_failures_stop_the_loop() -> None:
     assert "连续失败 2 轮" in result.reason
 
 
-def test_model_talking_without_tools_gets_one_nudge_then_fails() -> None:
-    client = FakeClient(reply(content="我觉得应该改 calc.py"))
+def test_model_stopping_without_tools_completes_the_loop() -> None:
+    """dsh / codex 的规矩：模型不再调用工具，就是它宣布干完了。"""
+    client = FakeClient(reply(content="我把 calc.py 的除零分支改掉了，测试全绿"))
     result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
 
-    assert result.status == FAILED
-    assert "不调用工具" in result.reason
-    assert sum(m.get("content") == "请用工具继续定位或修改，不要只描述。" for m in result.messages) == 1
+    assert result.status == RESOLVED
+    assert result.reason == "我把 calc.py 的除零分支改掉了，测试全绿"
+    assert client.calls == 1, "模型停手就是收工，不该再多问一轮"
+
+
+def test_stopping_without_saying_anything_still_carries_a_reason() -> None:
+    client = FakeClient(reply(content=None))
+    result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
+
+    assert result.status == RESOLVED
+    assert result.reason == "模型不再调用工具"
+
+
+def test_a_truncated_reply_is_continued_instead_of_counted_as_done() -> None:
+    """被 max_tokens 截断不是模型自己停的，不能当成收工。"""
+    client = FakeClient(
+        reply(content="结论是：", finish_reason="length"),
+        reply(content="改完了，测试全绿"),
+    )
+    result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
+
+    assert result.status == RESOLVED
+    assert result.reason == "改完了，测试全绿"
+    assert client.calls == 2
+
+
+def test_truncation_only_gets_pushed_once() -> None:
+    """一直被截断也不能无限推——推过一次就按它给的话收工。"""
+    client = FakeClient(reply(content="结论是：", finish_reason="length"))
+    result = loop(client, {"echo": lambda **_: "ok"}).run("修个 bug")
+
+    assert result.status == RESOLVED
+    assert result.reason == "结论是："
+    assert client.calls == 2
 
 
 def test_assistant_message_is_dumped_without_none_fields() -> None:
@@ -146,3 +184,26 @@ def test_assistant_message_is_dumped_without_none_fields() -> None:
     assistant = next(m for m in result.messages if m["role"] == "assistant")
     assert "content" not in assistant, "exclude_none 没生效的话 content: null 可能被 DeepSeek 拒"
     assert assistant["tool_calls"][0]["function"]["name"] == "echo"
+
+
+def test_every_observation_carries_the_remaining_budget() -> None:
+    """模型得知道自己在花什么，才知道什么时候该收手。"""
+    client = FakeClient(reply(("echo", '{"q": "1"}')), reply(content="改完了"))
+    result = loop(client, {"echo": lambda **_: "ok"}, max_steps=5).run("修个 bug")
+
+    tool_messages = [m["content"] for m in result.messages if m["role"] == "tool"]
+    assert "[预算] 已用 1/5 次模型调用，还剩 4 次" in tool_messages[0]
+    assert "ok" in tool_messages[0], "预算只是附加，命令输出本身不能被吃掉"
+
+
+def test_budget_note_is_attached_once_per_turn() -> None:
+    """一轮里调了多个工具，只在最后一条观察结果上挂一次。"""
+    client = FakeClient(
+        reply(("echo", '{"q": "1"}'), ("echo", '{"q": "2"}')), reply(content="改完了")
+    )
+    result = loop(client, {"echo": lambda **_: "ok"}, max_steps=5).run("修个 bug")
+
+    tool_messages = [m["content"] for m in result.messages if m["role"] == "tool"]
+    assert len(tool_messages) == 2
+    assert "[预算]" not in tool_messages[0]
+    assert "[预算]" in tool_messages[1]
