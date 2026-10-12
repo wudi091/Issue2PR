@@ -19,7 +19,7 @@ inputs:
     description: 代码定位策略，目前只实现 keyword
     default: keyword
   github_token:
-    description: 用于开 PR 与评论，传 ${{ secrets.GITHUB_TOKEN }}
+    description: 用于开 PR 与评论，传 workflow 里的 GITHUB_TOKEN
     required: true
 
 outputs:
