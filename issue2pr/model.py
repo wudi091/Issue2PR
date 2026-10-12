@@ -13,8 +13,8 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
-DEFAULT_MODEL = "deepseek-chat"
-DEFAULT_BASE_URL = "https://api.deepseek.com"
+DEFAULT_MODEL = "deepseek-flash"
+DEFAULT_BASE_URL = "http://s1:3001/v1"
 
 
 def build_client(api_key: str, base_url: str = DEFAULT_BASE_URL) -> OpenAI:
@@ -29,5 +29,17 @@ def complete(
     messages: list[ChatCompletionMessageParam],
     tools: list[ChatCompletionToolParam],
 ) -> ChatCompletion:
-    """发一次请求。以后的重试与用量统计都挂在这个函数里。"""
-    return client.chat.completions.create(model=model, messages=messages, tools=tools)
+    """发一次请求。以后的重试与用量统计都挂在这个函数里。
+
+    有的网关（实测 gpt-load 的**非流式**分支）会在标准响应外面再包一层
+    `{"data": {...}, "success": true}`。SDK 在顶层找不到 choices，会把整层壳
+    塞进 `model_extra`，于是 `completion.choices` 是 None。
+
+    这里剥掉。只在真看到那层壳时才动手，标准响应原样返回——
+    所以换成真 DeepSeek 或任何标准网关都不受影响。
+    """
+    completion = client.chat.completions.create(model=model, messages=messages, tools=tools)
+    envelope = completion.model_extra or {}
+    if completion.choices is None and isinstance(envelope.get("data"), dict):
+        return ChatCompletion.model_validate(envelope["data"])
+    return completion
