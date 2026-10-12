@@ -8,7 +8,7 @@ inputs:
     required: true
   model:
     description: 模型名
-    default: deepseek-flash
+    default: deepseek-chat
   base_url:
     description: 模型 API 地址，兼容 OpenAI 格式即可换供应商
     default: https://api.deepseek.com
