@@ -7,7 +7,11 @@ RUN apt-get update \
 
 # 工作区是挂进来的 /github/workspace，属主跟容器里的 root 不一致，
 # git 会拒绝操作（detected dubious ownership）。容器是一次性的，放开值得。
-RUN git config --global --add safe.directory '*'
+#
+# 必须用 --system，不能用 --global：构建时 HOME=/root，写进去的是 /root/.gitconfig，
+# 而 GitHub 跑容器动作时把 HOME 设成 /github/home —— 运行时 git 根本不读那一份。
+# system 配置落在 /etc/gitconfig，跟 HOME 无关。
+RUN git config --system --add safe.directory '*'
 
 WORKDIR /issue2pr
 
