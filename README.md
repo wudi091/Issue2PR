@@ -2,8 +2,9 @@
 
 把仓库里的一个 issue，自动变成一份能让测试通过的补丁，并开成 PR。
 
-> **状态：开发中，还不能用。** 目前仓库里只有 `action.yml`（接口定义）。
-> 下面「用法」写的是目标形态，不是现在能跑的东西。
+> **状态：开发中，还不能用。** 主循环已经能真跑起来（真模型 → 真命令 → 真改文件），
+> 但还缺 Dockerfile 和"开 PR"那一步，所以现在还装不进仓库用。
+> 下面「用法」写的是目标形态。
 
 ## 它是什么
 
@@ -72,8 +73,33 @@ jobs:
 
 ## 开发
 
-代码还没开始写。目前只有：
+分五层，依赖方向单向不成环：
 
 ```
-action.yml     Action 的输入输出接口
+issue2pr/
+  result.py            契约层     状态取值 / TaskDone / RunResult
+  prompt.py            提示词层   SYSTEM_PROMPT
+  model.py             模型层     客户端 + 一次调用
+  env/
+    __init__.py        环境层契约  Result / EnvError / Env 协议（不碰磁盘）
+    local.py           环境层实现  真实磁盘 + 真实子进程
+  tools/
+    __init__.py        工具汇总    build(env) 一键装配
+    dispatch.py        机制        绑定校验、执行一次调用
+    bash.py            bash 工具   模型唯一的能力入口
+  loop.py              调度层     AgentLoop
+  __main__.py          组装根     全项目只有这里 import 具体实现
+```
+
+跑测试：
+
+```bash
+python -m pytest tests
+```
+
+本地拿一个 issue 试跑：
+
+```bash
+export INPUT_API_KEY=...
+python -m issue2pr --repo /path/to/repo --issue "issue 正文"
 ```
