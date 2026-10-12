@@ -38,7 +38,12 @@ def complete(
     这里剥掉。只在真看到那层壳时才动手，标准响应原样返回——
     所以换成真 DeepSeek 或任何标准网关都不受影响。
     """
-    completion = client.chat.completions.create(model=model, messages=messages, tools=tools)
+    # 刻意用非流式（stream=False 是 SDK 默认值，这里写出来是因为它有依赖关系）：
+    # 壳只出现在非流式分支上；流式那条路返回标准 SSE，但那样就得自己把 delta
+    # 分片累加成一条完整消息，而我们要的只是"一次调用换一条消息"。
+    completion = client.chat.completions.create(
+        model=model, messages=messages, tools=tools, stream=False
+    )
     envelope = completion.model_extra or {}
     if completion.choices is None and isinstance(envelope.get("data"), dict):
         return ChatCompletion.model_validate(envelope["data"])
